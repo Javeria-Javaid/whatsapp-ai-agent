@@ -1,0 +1,6 @@
+node_modules
+dist
+coverage
+logs
+backend/uploads
+frontend/dist
