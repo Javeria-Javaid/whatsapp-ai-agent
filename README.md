@@ -38,6 +38,16 @@ Phase 3 adds OpenAI integration:
 - Per-user AI rate limiting
 - Conversation formatting boundary for Phase 4 memory
 
+Phase 4 adds conversation memory:
+
+- MongoDB user, conversation, and message models
+- Phone-number based multi-user memory
+- Session IDs and last-activity tracking
+- Recent-message context windows
+- Conversation summaries for long-running chats
+- Automatic inactive-session and expired-message cleanup
+- Repository layer for reusable database access
+
 ## Quick Start
 
 ```bash

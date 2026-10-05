@@ -4,6 +4,7 @@ import { connectMongoDB, disconnectMongoDB } from './config/database.js';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { connectRedis, disconnectRedis } from './config/redis.js';
+import { startMemoryCleanupJob } from './jobs/memory-cleanup.job.js';
 
 const startServer = async (): Promise<void> => {
   await connectMongoDB();
@@ -11,6 +12,7 @@ const startServer = async (): Promise<void> => {
 
   const app = createApp();
   const server = http.createServer(app);
+  const memoryCleanupJob = startMemoryCleanupJob();
 
   server.listen(env.PORT, () => {
     logger.info(`Server listening on port ${env.PORT}`);
@@ -21,6 +23,7 @@ const startServer = async (): Promise<void> => {
     logger.info(`${signal} received. Shutting down gracefully.`);
 
     server.close(async () => {
+      clearInterval(memoryCleanupJob);
       await disconnectRedis();
       await disconnectMongoDB();
       process.exit(0);

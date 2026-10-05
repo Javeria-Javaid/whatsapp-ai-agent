@@ -6,6 +6,7 @@ import type {
   AiConversationMessage,
   GenerateReplyInput,
   GenerateReplyResult,
+  SummarizeConversationInput,
 } from '../types/ai.types.js';
 import { AppError } from '../utils/app-error.js';
 
@@ -77,13 +78,96 @@ class OpenAiService {
     };
   }
 
+  async summarizeConversation(input: SummarizeConversationInput): Promise<string> {
+    const conversationText = input.messages
+      .map((message) => `${message.role.toUpperCase()}: ${message.content}`)
+      .join('\n');
+
+    const response = await this.withRetry(async () => {
+      return this.client.responses.create({
+        model: env.OPENAI_MODEL,
+        instructions:
+          'Summarize the conversation memory for a WhatsApp assistant. Keep durable facts, user preferences, unresolved requests, names, dates, and important business context. Omit filler. Keep it under 180 words.',
+        input: [
+          {
+            role: 'user',
+            content: [
+              input.existingSummary
+                ? `Existing summary:\n${input.existingSummary}`
+                : 'Existing summary: none',
+              `New messages:\n${conversationText}`,
+            ].join('\n\n'),
+          },
+        ],
+        temperature: 0.2,
+        max_output_tokens: 350,
+      });
+    });
+
+    const text = response.output_text?.trim();
+
+    if (!text) {
+      throw new AppError('OpenAI returned an empty conversation summary', 502);
+    }
+
+    return text;
+  }
+
+  async createEmbedding(text: string): Promise<number[]> {
+    const response = await this.withRetry(async () => {
+      return this.client.embeddings.create({
+        model: env.OPENAI_EMBEDDING_MODEL,
+        input: text,
+      });
+    });
+
+    const embedding = response.data[0]?.embedding;
+
+    if (!embedding) {
+      throw new AppError('OpenAI returned an empty embedding', 502);
+    }
+
+    return embedding;
+  }
+
+  async createEmbeddings(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) {
+      return [];
+    }
+
+    const response = await this.withRetry(async () => {
+      return this.client.embeddings.create({
+        model: env.OPENAI_EMBEDDING_MODEL,
+        input: texts,
+      });
+    });
+
+    return response.data.map((item) => item.embedding);
+  }
+
   private formatConversation(input: GenerateReplyInput): AiConversationMessage[] {
     const userLabel = input.contactName
       ? `${input.contactName} (${input.userPhoneNumber})`
       : input.userPhoneNumber;
 
     return [
+      ...(input.conversationSummary
+        ? [
+            {
+              role: 'system' as const,
+              content: `Conversation summary: ${input.conversationSummary}`,
+            },
+          ]
+        : []),
       ...(input.conversationHistory ?? []),
+      ...(input.knowledgeContext
+        ? [
+            {
+              role: 'system' as const,
+              content: `Knowledge base context:\n${input.knowledgeContext}`,
+            },
+          ]
+        : []),
       {
         role: 'user',
         content: `WhatsApp user ${userLabel} says: ${input.userMessage}`,
